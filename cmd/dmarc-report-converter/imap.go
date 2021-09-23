@@ -12,7 +12,35 @@ import (
 	"github.com/emersion/go-message"
 )
 
-func fetchIMAPAttachments(cfg *config) error {
+func fetchIMAPAttachments(cfg *config, entity *message.Entity) bool {
+
+	kind, _, cErr := entity.Header.ContentType()
+	if cErr != nil {
+		log.Fatal(cErr)
+	}
+
+	if kind == "application/gzip" || kind == "application/zip" || kind == "application/octet-stream" {
+		_, v, _ := entity.Header.ContentDisposition()
+		c, rErr := ioutil.ReadAll(entity.Body)
+		if rErr != nil {
+			log.Fatal(rErr)
+		}
+
+		outFile := filepath.Join(cfg.Input.Dir, v["filename"])
+
+		log.Printf("[INFO] * Extracting file %s", outFile)
+
+		err := ioutil.WriteFile(outFile, c, 0777)
+		if err != nil {
+			log.Fatal(rErr)
+		}
+		return true
+	}
+	return false
+
+}
+
+func fetchIMAPMail(cfg *config) error {
 
 	log.Println("[INFO] Connecting to server...")
 
@@ -35,6 +63,11 @@ func fetchIMAPAttachments(cfg *config) error {
 		log.Fatal(err)
 	}
 
+	if mbox.Messages == 0 {
+		log.Println("[INFO] No new messages on server")
+		os.Exit(0)
+	}
+
 	seqset := new(imap.SeqSet)
 	seqset.AddRange(1, mbox.Messages)
 
@@ -50,11 +83,6 @@ func fetchIMAPAttachments(cfg *config) error {
 	countMessages := 0
 	countProcessedMessages := 0
 
-	if len(messages) == 0 {
-		log.Printf("[INFO] No new messages inside %s", cfg.Input.IMAP.Mailbox)
-		os.Exit(0)
-	}
-
 	for msg := range messages {
 
 		downloadSuccess := false
@@ -66,37 +94,25 @@ func fetchIMAPAttachments(cfg *config) error {
 
 				log.Fatal(err)
 			}
-
 			multiPartReader := entity.MultipartReader()
 
-			for e, err := multiPartReader.NextPart(); err != io.EOF; e, err = multiPartReader.NextPart() {
-
-				kind, _, cErr := e.Header.ContentType()
-				if cErr != nil {
-					log.Fatal(cErr)
+			if multiPartReader == nil {
+				if fetchIMAPAttachments(cfg, entity) {
+					downloadSuccess = true
+					countProcessedMessages += 1
 				}
 
-				if kind != "application/gzip" && kind != "application/zip" && kind != "application/octet-stream" {
-					continue
+			} else {
+				for e, err := multiPartReader.NextPart(); err != io.EOF; e, err = multiPartReader.NextPart() {
+
+					if fetchIMAPAttachments(cfg, e) {
+						downloadSuccess = true
+						countProcessedMessages += 1
+					}
 				}
 
-				_, v, _ := e.Header.ContentDisposition()
-
-				c, rErr := ioutil.ReadAll(e.Body)
-				if rErr != nil {
-					log.Fatal(rErr)
-				}
-
-				outFile := filepath.Join(cfg.Input.Dir, v["filename"])
-
-				log.Printf("[INFO] * Extracting file %s", outFile)
-
-				if fErr := ioutil.WriteFile(outFile, c, 0777); err != nil {
-					log.Fatal(fErr)
-				}
-				downloadSuccess = true
-				countProcessedMessages += 1
 			}
+
 		}
 		if downloadSuccess && cfg.Input.IMAP.Delete {
 			log.Printf("[DEBUG] imap: add SeqNum %v to delete set", msg.SeqNum)
@@ -126,5 +142,6 @@ func fetchIMAPAttachments(cfg *config) error {
 	}
 
 	log.Printf("[INFO] Total messages: %d, Processed messages: %d", countMessages, countProcessedMessages)
+
 	return nil
 }

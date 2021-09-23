@@ -1,6 +1,6 @@
 module github.com/tierpod/dmarc-report-converter
 
-go 1.13
+go 1.16
 
 require (
 	github.com/emersion/go-imap v1.1.0
