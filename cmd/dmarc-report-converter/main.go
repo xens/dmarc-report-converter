@@ -44,7 +44,7 @@ func main() {
 	}
 
 	if cfg.Input.IMAP.IsConfigured() {
-		err = fetchIMAPAttachments(cfg)
+		err = fetchIMAPMail(cfg)
 		if err != nil {
 			log.Fatalf("[ERROR] fetchIMAPAttachments: %v", err)
 		}
