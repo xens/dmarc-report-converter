@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"io"
 	"io/ioutil"
 	"log"
@@ -13,13 +14,12 @@ import (
 )
 
 func fetchIMAPAttachments(cfg *config, entity *message.Entity) bool {
-
 	kind, _, cErr := entity.Header.ContentType()
 	if cErr != nil {
 		log.Fatal(cErr)
 	}
-
-	if kind == "application/gzip" || kind == "application/zip" || kind == "application/octet-stream" {
+	fmt.Println(kind)
+	if kind == "application/gzip" || kind == "application/zip" || kind == "application/octet-stream" || kind == "application/x-zip-compressed" {
 		_, v, _ := entity.Header.ContentDisposition()
 		c, rErr := ioutil.ReadAll(entity.Body)
 		if rErr != nil {
@@ -112,7 +112,6 @@ func fetchIMAPMail(cfg *config) error {
 				}
 
 			}
-
 		}
 		if downloadSuccess && cfg.Input.IMAP.Delete {
 			log.Printf("[DEBUG] imap: add SeqNum %v to delete set", msg.SeqNum)
@@ -142,6 +141,11 @@ func fetchIMAPMail(cfg *config) error {
 	}
 
 	log.Printf("[INFO] Total messages: %d, Processed messages: %d", countMessages, countProcessedMessages)
+
+	if countProcessedMessages == 0 {
+		log.Println("[INFO] No new parsable messages on server")
+		os.Exit(0)
+	}
 
 	return nil
 }
